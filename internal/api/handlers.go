@@ -14,9 +14,9 @@ import (
 )
 
 type Handlers struct {
-	logger         logger.Logger
-	mediaService   *mediaservice.Service
-	accessService  *accessservice.Service
+	logger        logger.Logger
+	mediaService  *mediaservice.Service
+	accessService *accessservice.Service
 }
 
 func NewHandlers(
@@ -32,7 +32,7 @@ func NewHandlers(
 }
 
 type UploadRequest struct {
-	Password  string        `json:"password,omitempty"`
+	Password  string         `json:"password,omitempty"`
 	ExpiresIn *time.Duration `json:"expires_in,omitempty"` // e.g., "1h", "24h", "7d"
 }
 
@@ -42,6 +42,18 @@ type UploadResponse struct {
 }
 
 // UploadMedia handles media upload
+// @Summary      Upload media file
+// @Description  Upload a media file (photo or video) with optional password protection and expiration time
+// @Tags         media
+// @Accept       multipart/form-data
+// @Produce      json
+// @Param        file        formData  file    true   "Media file to upload"
+// @Param        password    formData  string  false  "Optional password for access protection"
+// @Param        expires_in  formData  string  false  "Expiration time (e.g., 1h, 24h, 7d). Leave empty for no expiration"
+// @Success      200  {object}  UploadResponse
+// @Failure      400  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Router       /upload [post]
 func (h *Handlers) UploadMedia(c *fiber.Ctx) error {
 	var req UploadRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -94,6 +106,21 @@ type DownloadRequest struct {
 }
 
 // DownloadMedia handles media download (one-time view)
+// @Summary      Download media file
+// @Description  Download a media file. The file will be deleted after first successful download. Requires encryption key in URL fragment.
+// @Tags         media
+// @Accept       json
+// @Produce      application/octet-stream
+// @Param        key       path      string  true   "Resource key with encryption key (format: resourceKey#encryptionKey)"
+// @Param        password  query     string  false  "Password if resource is password protected"
+// @Param        password  body      DownloadRequest  false  "Password in request body"
+// @Success      200       {file}    binary
+// @Failure      400       {object}  map[string]string
+// @Failure      401       {object}  map[string]string
+// @Failure      404       {object}  map[string]string
+// @Failure      410       {object}  map[string]string
+// @Failure      500       {object}  map[string]string
+// @Router       /media/{key} [get]
 func (h *Handlers) DownloadMedia(c *fiber.Ctx) error {
 	resourceKey := c.Params("key")
 	if resourceKey == "" {
@@ -105,7 +132,7 @@ func (h *Handlers) DownloadMedia(c *fiber.Ctx) error {
 	// Get password from query parameter or body
 	var req DownloadRequest
 	_ = c.BodyParser(&req) // Ignore error, try query param if body parsing fails
-	
+
 	// If password not in body, try query param
 	if req.Password == "" {
 		req.Password = c.Query("password", "")
@@ -151,7 +178,7 @@ func (h *Handlers) DownloadMedia(c *fiber.Ctx) error {
 	resp, err := h.mediaService.DownloadMedia(c.Context(), downloadReq)
 	if err != nil {
 		h.logger.Error("failed to download media", zap.Error(err))
-		
+
 		// Handle specific errors
 		switch err {
 		case mediaservice.ErrNotFound:
@@ -192,9 +219,14 @@ func (h *Handlers) DownloadMedia(c *fiber.Ctx) error {
 }
 
 // HealthCheck handles health check endpoint
+// @Summary      Health check
+// @Description  Check if the service is running
+// @Tags         health
+// @Produce      json
+// @Success      200  {object}  map[string]string
+// @Router       /health [get]
 func (h *Handlers) HealthCheck(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{
 		"status": "ok",
 	})
 }
-

@@ -24,10 +24,10 @@ type s3Impl struct {
 
 // Config holds S3 configuration
 type Config struct {
-	Region   string
-	Bucket   string
-	Endpoint string // Optional, for local S3-compatible services
-	AccessKeyID string
+	Region          string
+	Bucket          string
+	Endpoint        string // Optional, for local S3-compatible services
+	AccessKeyID     string
 	SecretAccessKey string
 }
 
@@ -114,4 +114,3 @@ func (s *s3Impl) Delete(ctx context.Context, bucket, key string) error {
 	})
 	return err
 }
-

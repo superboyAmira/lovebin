@@ -1,0 +1,204 @@
+basePath: /
+definitions:
+  api.DownloadRequest:
+    properties:
+      password:
+        type: string
+    type: object
+  api.UploadResponse:
+    properties:
+      resource_key:
+        type: string
+      url:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact: {}
+  description: Сервис обмена фотографиями и видео с шифрованием на стороне клиента
+  termsOfService: http://swagger.io/terms/
+  title: LoveBin API
+  version: "1.0"
+paths:
+  /health:
+    get:
+      description: Check if the service is running
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check
+      tags:
+      - health
+  /media/{key}:
+    get:
+      consumes:
+      - application/json
+      description: Download a media file. The file will be deleted after first successful
+        download. Requires encryption key in URL fragment.
+      parameters:
+      - description: 'Resource key with encryption key (format: resourceKey#encryptionKey)'
+        in: path
+        name: key
+        required: true
+        type: string
+      - description: Password if resource is password protected
+        in: query
+        name: password
+        type: string
+      - description: Password in request body
+        in: body
+        name: password
+        schema:
+          $ref: '#/definitions/api.DownloadRequest'
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "410":
+          description: Gone
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Download media file
+      tags:
+      - media
+    post:
+      consumes:
+      - application/json
+      description: Download a media file. The file will be deleted after first successful
+        download. Requires encryption key in URL fragment.
+      parameters:
+      - description: 'Resource key with encryption key (format: resourceKey#encryptionKey)'
+        in: path
+        name: key
+        required: true
+        type: string
+      - description: Password if resource is password protected
+        in: query
+        name: password
+        type: string
+      - description: Password in request body
+        in: body
+        name: password
+        schema:
+          $ref: '#/definitions/api.DownloadRequest'
+      produces:
+      - application/octet-stream
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: file
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "410":
+          description: Gone
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Download media file
+      tags:
+      - media
+  /upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload a media file (photo or video) with optional password protection
+        and expiration time
+      parameters:
+      - description: Media file to upload
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Optional password for access protection
+        in: formData
+        name: password
+        type: string
+      - description: Expiration time (e.g., 1h, 24h, 7d). Leave empty for no expiration
+        in: formData
+        name: expires_in
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/api.UploadResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Upload media file
+      tags:
+      - media
+schemes:
+- http
+- https
+swagger: "2.0"

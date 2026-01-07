@@ -25,7 +25,7 @@ docker-compose up -d
 
 После запуска:
 - **Приложение**: http://localhost:8080
-- **MinIO Console**: http://localhost:9001 (minioadmin/minioadmin)
+- **MinIO**: http://localhost:9000 (minioadmin/minioadmin)
 - **PostgreSQL**: localhost:5432 (postgres/postgres)
 
 ### Управление Docker
@@ -129,13 +129,6 @@ expires_in: <optional duration, e.g., "1h", "24h", "7d">
 ### Скачивание медиа
 ```
 GET /media/:key?password=<optional password>
-или
-POST /media/:key
-Content-Type: application/json
-
-{
-  "password": "<optional password>"
-}
 ```
 
 Ресурс будет удален после первого успешного просмотра.
@@ -170,24 +163,5 @@ GET /health
 - Пароли хешируются с помощью bcrypt
 - Ресурсы автоматически удаляются после первого просмотра
 - Поддержка истечения срока действия
-- CORS настроен для безопасной работы с фронтендом
+- CORS
 
-## Разработка
-
-Для генерации кода sqlc после изменения SQL запросов:
-```bash
-make sqlc
-```
-
-## Docker Compose
-
-Docker Compose включает:
-- **PostgreSQL 15** - база данных
-- **MinIO** - S3-совместимое хранилище
-- **LoveBin App** - приложение
-
-Все сервисы автоматически настраиваются и подключаются друг к другу.
-
-## Лицензия
-
-MIT

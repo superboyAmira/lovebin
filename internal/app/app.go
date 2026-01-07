@@ -92,7 +92,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		AllowOrigins:     "*",
 		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
 		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
-		AllowCredentials: true,
+		AllowCredentials: false,
 		ExposeHeaders:    "Content-Length",
 		MaxAge:           3600,
 	}))

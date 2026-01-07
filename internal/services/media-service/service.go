@@ -158,18 +158,12 @@ func (s *Service) UploadMedia(ctx context.Context, req UploadRequest) (*UploadRe
 	}
 
 	// Store in database (salt is needed for decryption)
-	repoResource, err := s.repo.CreateMediaResource(ctx, serviceToRepoCreateParams(CreateMediaResourceParams{
+	_, err = s.repo.CreateMediaResource(ctx, serviceToRepoCreateParams(CreateMediaResourceParams{
 		ResourceKey:  resourceKey,
 		PasswordHash: passwordHash,
 		ExpiresAt:    expiresAt,
 		Salt:         salt,
 	}))
-	if err != nil {
-		// Cleanup S3 on error
-		_ = s.s3.Delete(ctx, "", s3Key)
-		return nil, err
-	}
-	_ = repoResource // Resource created successfully
 	if err != nil {
 		// Cleanup S3 on error
 		_ = s.s3.Delete(ctx, "", s3Key)

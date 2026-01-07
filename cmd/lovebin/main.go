@@ -7,6 +7,8 @@ import (
 	"syscall"
 	"time"
 
+	_ "lovebin/docs" // swagger docs
+
 	"lovebin/internal/app"
 	"lovebin/modules/encryption"
 	"lovebin/modules/logger"
@@ -14,6 +16,15 @@ import (
 	"lovebin/modules/s3"
 )
 
+// @title           LoveBin API
+// @version         1.0
+// @description     Сервис обмена фотографиями и видео с шифрованием на стороне клиента
+// @termsOfService  http://swagger.io/terms/
+
+// @host      localhost:8080
+// @BasePath  /
+
+// @schemes   http https
 func main() {
 	ctx := context.Background()
 

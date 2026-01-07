@@ -120,4 +120,3 @@ func GenerateURLKey() (string, error) {
 	}
 	return base64.URLEncoding.EncodeToString(key), nil
 }
-

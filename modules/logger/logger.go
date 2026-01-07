@@ -1,7 +1,9 @@
 package logger
 
 import (
+	"fmt"
 	"os"
+	"runtime"
 	"sync"
 
 	"go.uber.org/zap"
@@ -34,22 +36,30 @@ type loggerImpl struct {
 }
 
 func (l *loggerImpl) Info(msg string, fields ...zap.Field) {
+	fields = append(fields, zap.String("caller", getCaller()))
 	l.logger.Info(msg, fields...)
 }
 
 func (l *loggerImpl) Error(msg string, fields ...zap.Field) {
+	fields = append(fields, zap.String("caller", getCaller()))
 	l.logger.Error(msg, fields...)
 }
 
 func (l *loggerImpl) Warn(msg string, fields ...zap.Field) {
+	fields = append(fields, zap.String("caller", getCaller()))
+
 	l.logger.Warn(msg, fields...)
 }
 
 func (l *loggerImpl) Debug(msg string, fields ...zap.Field) {
+	fields = append(fields, zap.String("caller", getCaller()))
+
 	l.logger.Debug(msg, fields...)
 }
 
 func (l *loggerImpl) Fatal(msg string, fields ...zap.Field) {
+	fields = append(fields, zap.String("caller", getCaller()))
+
 	l.logger.Fatal(msg, fields...)
 }
 
@@ -122,4 +132,12 @@ func getDefaultLevel() string {
 		return level
 	}
 	return "info"
+}
+
+func getCaller() string {
+	_, file, line, ok := runtime.Caller(2)
+	if !ok {
+		return "unknown"
+	}
+	return fmt.Sprintf("%s:%d", file, line)
 }
