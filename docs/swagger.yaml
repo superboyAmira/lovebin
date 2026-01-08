@@ -1,11 +1,6 @@
 basePath: /
 definitions:
-  api.DownloadRequest:
-    properties:
-      password:
-        type: string
-    type: object
-  api.UploadResponse:
+  internal_api.UploadResponse:
     properties:
       resource_key:
         type: string
@@ -51,71 +46,6 @@ paths:
         in: query
         name: password
         type: string
-      - description: Password in request body
-        in: body
-        name: password
-        schema:
-          $ref: '#/definitions/api.DownloadRequest'
-      produces:
-      - application/octet-stream
-      responses:
-        "200":
-          description: OK
-          schema:
-            type: file
-        "400":
-          description: Bad Request
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "401":
-          description: Unauthorized
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "404":
-          description: Not Found
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "410":
-          description: Gone
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "500":
-          description: Internal Server Error
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-      summary: Download media file
-      tags:
-      - media
-    post:
-      consumes:
-      - application/json
-      description: Download a media file. The file will be deleted after first successful
-        download. Requires encryption key in URL fragment.
-      parameters:
-      - description: 'Resource key with encryption key (format: resourceKey#encryptionKey)'
-        in: path
-        name: key
-        required: true
-        type: string
-      - description: Password if resource is password protected
-        in: query
-        name: password
-        type: string
-      - description: Password in request body
-        in: body
-        name: password
-        schema:
-          $ref: '#/definitions/api.DownloadRequest'
       produces:
       - application/octet-stream
       responses:
@@ -160,8 +90,9 @@ paths:
     post:
       consumes:
       - multipart/form-data
-      description: Upload a media file (photo or video) with optional password protection
-        and expiration time
+      description: 'Upload a media file (photo or video) with optional password protection
+        and expiration time. ExpiresIn supports: duration (1h, 24h, 7d, 2w, 1y) or
+        absolute time (RFC3339, ISO8601, Unix timestamp)'
       parameters:
       - description: Media file to upload
         in: formData
@@ -172,7 +103,8 @@ paths:
         in: formData
         name: password
         type: string
-      - description: Expiration time (e.g., 1h, 24h, 7d). Leave empty for no expiration
+      - description: 'Expiration time: duration (1h, 24h, 7d, 2w) or absolute (RFC3339,
+          ISO8601, Unix timestamp). Leave empty for no expiration'
         in: formData
         name: expires_in
         type: string
@@ -182,7 +114,7 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/api.UploadResponse'
+            $ref: '#/definitions/internal_api.UploadResponse'
         "400":
           description: Bad Request
           schema:

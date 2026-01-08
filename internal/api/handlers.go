@@ -2,6 +2,7 @@ package api
 
 import (
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	accessservice "lovebin/internal/services/access-service"
 	mediaservice "lovebin/internal/services/media-service"
 	"lovebin/modules/logger"
+	"lovebin/modules/timeparser"
 )
 
 type Handlers struct {
@@ -32,8 +34,8 @@ func NewHandlers(
 }
 
 type UploadRequest struct {
-	Password  string         `json:"password,omitempty"`
-	ExpiresIn *time.Duration `json:"expires_in,omitempty"` // e.g., "1h", "24h", "7d"
+	Password  string                   `json:"password,omitempty" form:"password"`
+	ExpiresIn timeparser.UniversalTime `json:"expires_in,omitempty" form:"expires_in"` // e.g., "1h", "24h", "7d", "2024-12-31T23:59:59Z"
 }
 
 type UploadResponse struct {
@@ -43,31 +45,47 @@ type UploadResponse struct {
 
 // UploadMedia handles media upload
 // @Summary      Upload media file
-// @Description  Upload a media file (photo or video) with optional password protection and expiration time
+// @Description  Upload a media file (photo or video) with optional password protection and expiration time. ExpiresIn supports: duration (1h, 24h, 7d, 2w, 1y) or absolute time (RFC3339, ISO8601, Unix timestamp)
 // @Tags         media
 // @Accept       multipart/form-data
 // @Produce      json
 // @Param        file        formData  file    true   "Media file to upload"
 // @Param        password    formData  string  false  "Optional password for access protection"
-// @Param        expires_in  formData  string  false  "Expiration time (e.g., 1h, 24h, 7d). Leave empty for no expiration"
+// @Param        expires_in  formData  string  false  "Expiration time: duration (1h, 24h, 7d, 2w) or absolute (RFC3339, ISO8601, Unix timestamp). Leave empty for no expiration"
 // @Success      200  {object}  UploadResponse
 // @Failure      400  {object}  map[string]string
 // @Failure      500  {object}  map[string]string
 // @Router       /upload [post]
 func (h *Handlers) UploadMedia(c *fiber.Ctx) error {
-	var req UploadRequest
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "invalid request body",
-		})
-	}
-	// Get file from multipart form
+	// Get file from multipart form first
 	file, err := c.FormFile("file")
 	if err != nil {
-		// Try to get file from body if not multipart
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "file is required in multipart form",
 		})
+	}
+
+	// Parse form data
+	var req UploadRequest
+	req.Password = c.FormValue("password")
+	expiresInStr := c.FormValue("expires_in")
+
+	// Parse expires_in using universal time parser
+	if expiresInStr != "" {
+		if err := req.ExpiresIn.UnmarshalText([]byte(expiresInStr)); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "invalid expires_in format: " + err.Error(),
+			})
+		}
+
+		// Проверяем, что время в будущем
+		if !req.ExpiresIn.IsZero() && req.ExpiresIn.Time.Before(time.Now().UTC()) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "expires_in must be in the future",
+			})
+		}
+	} else {
+		req.ExpiresIn = timeparser.NewUniversalTime(time.Now().Add(24 * time.Hour))
 	}
 
 	// Open file
@@ -84,7 +102,8 @@ func (h *Handlers) UploadMedia(c *fiber.Ctx) error {
 	uploadReq := mediaservice.UploadRequest{
 		Data:      src,
 		Password:  req.Password,
-		ExpiresIn: req.ExpiresIn,
+		ExpiresAt: req.ExpiresIn,
+		Filename:  file.Filename,
 	}
 
 	resp, err := h.mediaService.UploadMedia(c.Context(), uploadReq)
@@ -113,7 +132,6 @@ type DownloadRequest struct {
 // @Produce      application/octet-stream
 // @Param        key       path      string  true   "Resource key with encryption key (format: resourceKey#encryptionKey)"
 // @Param        password  query     string  false  "Password if resource is password protected"
-// @Param        password  body      DownloadRequest  false  "Password in request body"
 // @Success      200       {file}    binary
 // @Failure      400       {object}  map[string]string
 // @Failure      401       {object}  map[string]string
@@ -122,28 +140,34 @@ type DownloadRequest struct {
 // @Failure      500       {object}  map[string]string
 // @Router       /media/{key} [get]
 func (h *Handlers) DownloadMedia(c *fiber.Ctx) error {
-	resourceKey := c.Params("key")
-	if resourceKey == "" {
+	resourceKeyEncoded := c.Params("key")
+	if resourceKeyEncoded == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "resource key is required",
 		})
 	}
 
-	// Get password from query parameter or body
-	var req DownloadRequest
-	_ = c.BodyParser(&req) // Ignore error, try query param if body parsing fails
-
-	// If password not in body, try query param
-	if req.Password == "" {
-		req.Password = c.Query("password", "")
+	// Decode URL-encoded key (handles %3D, %23, etc.)
+	resourceKey, err := url.PathUnescape(resourceKeyEncoded)
+	if err != nil {
+		// If PathUnescape fails, try QueryUnescape as fallback
+		resourceKey, err = url.QueryUnescape(resourceKeyEncoded)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": "invalid resource key encoding",
+			})
+		}
 	}
+
+	var req DownloadRequest
+	req.Password = c.Query("password", "")
 
 	// Extract resource key (without encryption key part for access check)
 	resourceKeyParts := strings.Split(resourceKey, "#")
 	resourceKeyForCheck := resourceKeyParts[0]
 
 	// Verify access (using only resource key, not encryption key)
-	err := h.accessService.VerifyAccess(c.Context(), resourceKeyForCheck, req.Password)
+	err = h.accessService.VerifyAccess(c.Context(), resourceKeyForCheck, req.Password)
 	if err != nil {
 		switch err {
 		case accessservice.ErrNotFound:
@@ -205,9 +229,25 @@ func (h *Handlers) DownloadMedia(c *fiber.Ctx) error {
 	}
 	defer resp.Data.Close()
 
+	// Build filename from saved name and extension
+	var downloadFilename string
+	if resp.Filename != nil && *resp.Filename != "" {
+		downloadFilename = *resp.Filename
+		if resp.FileExtension != nil && *resp.FileExtension != "" {
+			downloadFilename += "." + *resp.FileExtension
+		}
+	} else {
+		// Fallback to resourceKey if filename not saved
+		downloadFilename = resourceKeyForCheck
+	}
+
 	// Stream response
 	c.Set("Content-Type", "application/octet-stream")
-	c.Set("Content-Disposition", "attachment")
+	// Set Content-Disposition with filename
+	// Use RFC 5987 format for UTF-8 support (filename* parameter)
+	// This ensures proper encoding for non-ASCII characters (e.g., Russian, Chinese, etc.)
+	disposition := buildContentDisposition(downloadFilename)
+	c.Set("Content-Disposition", disposition)
 
 	_, err = io.Copy(c.Response().BodyWriter(), resp.Data)
 	if err != nil {
@@ -216,6 +256,26 @@ func (h *Handlers) DownloadMedia(c *fiber.Ctx) error {
 	}
 
 	return nil
+}
+
+// buildContentDisposition builds Content-Disposition header with proper UTF-8 encoding
+// Uses RFC 5987 format: attachment; filename="fallback"; filename*=UTF-8”encoded
+// This ensures proper display of non-ASCII characters (Russian, Chinese, etc.) in filenames
+func buildContentDisposition(filename string) string {
+	// Escape filename for ASCII fallback (basic escaping for quotes and backslashes)
+	escapedASCII := strings.ReplaceAll(filename, `\`, `\\`)
+	escapedASCII = strings.ReplaceAll(escapedASCII, `"`, `\"`)
+
+	// For UTF-8 encoding, use RFC 5987 format
+	// Format: filename*=UTF-8''percent-encoded-filename
+	// Percent-encode the filename using URL encoding
+	// QueryEscape handles UTF-8 properly, but we need to replace + with %20 for RFC 5987
+	encodedUTF8 := url.QueryEscape(filename)
+	encodedUTF8 = strings.ReplaceAll(encodedUTF8, "+", "%20")
+
+	// Build the header value with both ASCII fallback and UTF-8 encoded version
+	// Modern browsers will use filename* if available, older ones will use filename
+	return `attachment; filename="` + escapedASCII + `"; filename*=UTF-8''` + encodedUTF8
 }
 
 // HealthCheck handles health check endpoint

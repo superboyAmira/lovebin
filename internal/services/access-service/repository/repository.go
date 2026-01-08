@@ -2,10 +2,10 @@ package repository
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"lovebin/modules/timeparser"
 )
 
 // ResourceAccess represents resource access information
@@ -13,7 +13,7 @@ type ResourceAccess struct {
 	ID           string
 	ResourceKey  string
 	PasswordHash *string
-	ExpiresAt    *time.Time
+	ExpiresAt    timeparser.UniversalTime
 	Viewed       bool
 	Salt         []byte
 }
@@ -65,9 +65,9 @@ func toResourceAccess(db CheckResourceAccessRow) ResourceAccess {
 		result.PasswordHash = &db.PasswordHash.String
 	}
 
-	// Convert expires at
+	// Convert expires at to UniversalTime (UTC)
 	if db.ExpiresAt.Valid {
-		result.ExpiresAt = &db.ExpiresAt.Time
+		result.ExpiresAt = timeparser.NewUniversalTime(db.ExpiresAt.Time)
 	}
 
 	// Convert viewed

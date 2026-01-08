@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS media_resources (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     resource_key VARCHAR(255) UNIQUE NOT NULL, -- S3 key
     password_hash VARCHAR(255), -- bcrypt hash of password (optional)
-    expires_at TIMESTAMP, -- expiration time (NULL means never expires)
+    expires_at TIMESTAMP DEFAULT NOW() + INTERVAL '1 hour', -- expiration time (NULL means never expires)
     viewed BOOLEAN DEFAULT FALSE, -- whether resource was viewed
     created_at TIMESTAMP DEFAULT NOW(),
     salt BYTEA -- salt for encryption (encryption key is in URL, not stored)

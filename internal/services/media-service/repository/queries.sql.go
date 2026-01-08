@@ -16,17 +16,21 @@ INSERT INTO media_resources (
     resource_key,
     password_hash,
     expires_at,
-    salt
+    salt,
+    filename,
+    file_extension
 ) VALUES (
-    $1, $2, $3, $4
-) RETURNING id, resource_key, password_hash, expires_at, viewed, created_at, salt
+    $1, $2, $3, $4, $5, $6
+) RETURNING id, resource_key, password_hash, expires_at, viewed, created_at, salt, filename, file_extension
 `
 
 type CreateMediaResourceParams struct {
-	ResourceKey  string           `json:"resource_key"`
-	PasswordHash pgtype.Text      `json:"password_hash"`
-	ExpiresAt    pgtype.Timestamp `json:"expires_at"`
-	Salt         []byte           `json:"salt"`
+	ResourceKey   string           `json:"resource_key"`
+	PasswordHash  pgtype.Text      `json:"password_hash"`
+	ExpiresAt     pgtype.Timestamp `json:"expires_at"`
+	Salt          []byte           `json:"salt"`
+	Filename      pgtype.Text      `json:"filename"`
+	FileExtension pgtype.Text      `json:"file_extension"`
 }
 
 func (q *Queries) CreateMediaResource(ctx context.Context, arg CreateMediaResourceParams) (MediaResource, error) {
@@ -35,6 +39,8 @@ func (q *Queries) CreateMediaResource(ctx context.Context, arg CreateMediaResour
 		arg.PasswordHash,
 		arg.ExpiresAt,
 		arg.Salt,
+		arg.Filename,
+		arg.FileExtension,
 	)
 	var i MediaResource
 	err := row.Scan(
@@ -45,6 +51,8 @@ func (q *Queries) CreateMediaResource(ctx context.Context, arg CreateMediaResour
 		&i.Viewed,
 		&i.CreatedAt,
 		&i.Salt,
+		&i.Filename,
+		&i.FileExtension,
 	)
 	return i, err
 }
@@ -71,7 +79,7 @@ func (q *Queries) DeleteMediaResource(ctx context.Context, resourceKey string) e
 }
 
 const getMediaResourceByKey = `-- name: GetMediaResourceByKey :one
-SELECT id, resource_key, password_hash, expires_at, viewed, created_at, salt
+SELECT id, resource_key, password_hash, expires_at, viewed, created_at, salt, filename, file_extension
 FROM media_resources
 WHERE resource_key = $1
 AND (expires_at IS NULL OR expires_at > NOW())
@@ -89,12 +97,14 @@ func (q *Queries) GetMediaResourceByKey(ctx context.Context, resourceKey string)
 		&i.Viewed,
 		&i.CreatedAt,
 		&i.Salt,
+		&i.Filename,
+		&i.FileExtension,
 	)
 	return i, err
 }
 
 const getMediaResourceForView = `-- name: GetMediaResourceForView :one
-SELECT id, resource_key, password_hash, expires_at, viewed, created_at, salt
+SELECT id, resource_key, password_hash, expires_at, viewed, created_at, salt, filename, file_extension
 FROM media_resources
 WHERE resource_key = $1
 AND (expires_at IS NULL OR expires_at > NOW())
@@ -112,6 +122,8 @@ func (q *Queries) GetMediaResourceForView(ctx context.Context, resourceKey strin
 		&i.Viewed,
 		&i.CreatedAt,
 		&i.Salt,
+		&i.Filename,
+		&i.FileExtension,
 	)
 	return i, err
 }

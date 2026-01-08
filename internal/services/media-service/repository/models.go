@@ -9,11 +9,13 @@ import (
 )
 
 type MediaResource struct {
-	ID           pgtype.UUID      `json:"id"`
-	ResourceKey  string           `json:"resource_key"`
-	PasswordHash pgtype.Text      `json:"password_hash"`
-	ExpiresAt    pgtype.Timestamp `json:"expires_at"`
-	Viewed       pgtype.Bool      `json:"viewed"`
-	CreatedAt    pgtype.Timestamp `json:"created_at"`
-	Salt         []byte           `json:"salt"`
+	ID            pgtype.UUID      `json:"id"`
+	ResourceKey   string           `json:"resource_key"`
+	PasswordHash  pgtype.Text      `json:"password_hash"`
+	ExpiresAt     pgtype.Timestamp `json:"expires_at"`
+	Viewed        pgtype.Bool      `json:"viewed"`
+	CreatedAt     pgtype.Timestamp `json:"created_at"`
+	Salt          []byte           `json:"salt"`
+	Filename      pgtype.Text      `json:"filename"`
+	FileExtension pgtype.Text      `json:"file_extension"`
 }

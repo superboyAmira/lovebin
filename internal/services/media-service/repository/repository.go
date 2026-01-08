@@ -16,21 +16,25 @@ type MediaRepository struct {
 
 // CreateMediaResourceInput represents input parameters for creating a media resource
 type CreateMediaResourceInput struct {
-	ResourceKey  string
-	PasswordHash *string
-	ExpiresAt    *time.Time
-	Salt         []byte
+	ResourceKey   string
+	PasswordHash  *string
+	ExpiresAt     *time.Time
+	Salt          []byte
+	Filename      *string
+	FileExtension *string
 }
 
 // MediaResourceResult represents a media resource result
 type MediaResourceResult struct {
-	ID           string
-	ResourceKey  string
-	PasswordHash *string
-	ExpiresAt    *time.Time
-	Viewed       bool
-	CreatedAt    time.Time
-	Salt         []byte
+	ID            string
+	ResourceKey   string
+	PasswordHash  *string
+	ExpiresAt     *time.Time
+	Viewed        bool
+	CreatedAt     time.Time
+	Salt          []byte
+	Filename      *string
+	FileExtension *string
 }
 
 func NewMediaRepository(db *pgxpool.Pool) *MediaRepository {
@@ -59,6 +63,22 @@ func (r *MediaRepository) CreateMediaResource(ctx context.Context, arg CreateMed
 		sqlcParams.ExpiresAt = pgtype.Timestamp{
 			Time:  *arg.ExpiresAt,
 			Valid: true,
+		}
+	}
+
+	// Convert filename
+	if arg.Filename != nil {
+		sqlcParams.Filename = pgtype.Text{
+			String: *arg.Filename,
+			Valid:  true,
+		}
+	}
+
+	// Convert file extension
+	if arg.FileExtension != nil {
+		sqlcParams.FileExtension = pgtype.Text{
+			String: *arg.FileExtension,
+			Valid:  true,
 		}
 	}
 
@@ -125,6 +145,16 @@ func toMediaResourceResult(db MediaResource) MediaResourceResult {
 	// Convert created at
 	if db.CreatedAt.Valid {
 		result.CreatedAt = db.CreatedAt.Time
+	}
+
+	// Convert filename
+	if db.Filename.Valid {
+		result.Filename = &db.Filename.String
+	}
+
+	// Convert file extension
+	if db.FileExtension.Valid {
+		result.FileExtension = &db.FileExtension.String
 	}
 
 	return result

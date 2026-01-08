@@ -65,103 +65,6 @@ const docTemplate = `{
                         "description": "Password if resource is password protected",
                         "name": "password",
                         "in": "query"
-                    },
-                    {
-                        "description": "Password in request body",
-                        "name": "password",
-                        "in": "body",
-                        "schema": {
-                            "$ref": "#/definitions/api.DownloadRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "file"
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "401": {
-                        "description": "Unauthorized",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "410": {
-                        "description": "Gone",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    }
-                }
-            },
-            "post": {
-                "description": "Download a media file. The file will be deleted after first successful download. Requires encryption key in URL fragment.",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/octet-stream"
-                ],
-                "tags": [
-                    "media"
-                ],
-                "summary": "Download media file",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Resource key with encryption key (format: resourceKey#encryptionKey)",
-                        "name": "key",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Password if resource is password protected",
-                        "name": "password",
-                        "in": "query"
-                    },
-                    {
-                        "description": "Password in request body",
-                        "name": "password",
-                        "in": "body",
-                        "schema": {
-                            "$ref": "#/definitions/api.DownloadRequest"
-                        }
                     }
                 ],
                 "responses": {
@@ -221,7 +124,7 @@ const docTemplate = `{
         },
         "/upload": {
             "post": {
-                "description": "Upload a media file (photo or video) with optional password protection and expiration time",
+                "description": "Upload a media file (photo or video) with optional password protection and expiration time. ExpiresIn supports: duration (1h, 24h, 7d, 2w, 1y) or absolute time (RFC3339, ISO8601, Unix timestamp)",
                 "consumes": [
                     "multipart/form-data"
                 ],
@@ -248,7 +151,7 @@ const docTemplate = `{
                     },
                     {
                         "type": "string",
-                        "description": "Expiration time (e.g., 1h, 24h, 7d). Leave empty for no expiration",
+                        "description": "Expiration time: duration (1h, 24h, 7d, 2w) or absolute (RFC3339, ISO8601, Unix timestamp). Leave empty for no expiration",
                         "name": "expires_in",
                         "in": "formData"
                     }
@@ -257,7 +160,7 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/api.UploadResponse"
+                            "$ref": "#/definitions/internal_api.UploadResponse"
                         }
                     },
                     "400": {
@@ -283,15 +186,7 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "api.DownloadRequest": {
-            "type": "object",
-            "properties": {
-                "password": {
-                    "type": "string"
-                }
-            }
-        },
-        "api.UploadResponse": {
+        "internal_api.UploadResponse": {
             "type": "object",
             "properties": {
                 "resource_key": {

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -16,27 +17,42 @@ import (
 	"lovebin/modules/logger"
 	"lovebin/modules/postgres"
 	"lovebin/modules/s3"
+	"lovebin/modules/timeparser"
 )
 
 // Convert repository types to service types
 func repoToServiceMediaResource(repo mediarepo.MediaResourceResult) MediaResource {
-	return MediaResource{
-		ID:           repo.ID,
-		ResourceKey:  repo.ResourceKey,
-		PasswordHash: repo.PasswordHash,
-		ExpiresAt:    repo.ExpiresAt,
-		Viewed:       repo.Viewed,
-		CreatedAt:    repo.CreatedAt,
-		Salt:         repo.Salt,
+	result := MediaResource{
+		ID:            repo.ID,
+		ResourceKey:   repo.ResourceKey,
+		PasswordHash:  repo.PasswordHash,
+		Viewed:        repo.Viewed,
+		Salt:          repo.Salt,
+		Filename:      repo.Filename,
+		FileExtension: repo.FileExtension,
 	}
+
+	// Convert ExpiresAt
+	if repo.ExpiresAt != nil {
+		result.ExpiresAt = timeparser.NewUniversalTime(*repo.ExpiresAt)
+	}
+
+	// Convert CreatedAt
+	if !repo.CreatedAt.IsZero() {
+		result.CreatedAt = timeparser.NewUniversalTime(repo.CreatedAt)
+	}
+
+	return result
 }
 
 func serviceToRepoCreateParams(arg CreateMediaResourceParams) mediarepo.CreateMediaResourceInput {
 	return mediarepo.CreateMediaResourceInput{
-		ResourceKey:  arg.ResourceKey,
-		PasswordHash: arg.PasswordHash,
-		ExpiresAt:    arg.ExpiresAt,
-		Salt:         arg.Salt,
+		ResourceKey:   arg.ResourceKey,
+		PasswordHash:  arg.PasswordHash,
+		ExpiresAt:     arg.ExpiresAt,
+		Salt:          arg.Salt,
+		Filename:      arg.Filename,
+		FileExtension: arg.FileExtension,
 	}
 }
 
@@ -57,20 +73,24 @@ type Repository interface {
 }
 
 type CreateMediaResourceParams struct {
-	ResourceKey  string
-	PasswordHash *string
-	ExpiresAt    *time.Time
-	Salt         []byte
+	ResourceKey   string
+	PasswordHash  *string
+	ExpiresAt     *time.Time
+	Salt          []byte
+	Filename      *string
+	FileExtension *string
 }
 
 type MediaResource struct {
-	ID           string
-	ResourceKey  string
-	PasswordHash *string
-	ExpiresAt    *time.Time
-	Viewed       bool
-	CreatedAt    time.Time
-	Salt         []byte
+	ID            string
+	ResourceKey   string
+	PasswordHash  *string
+	ExpiresAt     timeparser.UniversalTime
+	Viewed        bool
+	CreatedAt     timeparser.UniversalTime
+	Salt          []byte
+	Filename      *string
+	FileExtension *string
 }
 
 func NewService(
@@ -92,7 +112,8 @@ func NewService(
 type UploadRequest struct {
 	Data      io.Reader
 	Password  string
-	ExpiresIn *time.Duration // nil means never expires
+	ExpiresAt timeparser.UniversalTime // zero time means never expires
+	Filename  string                   // original filename
 }
 
 type UploadResponse struct {
@@ -112,7 +133,7 @@ func (s *Service) UploadMedia(ctx context.Context, req UploadRequest) (*UploadRe
 	if err != nil {
 		return nil, err
 	}
-	encKeyBase64 := base64.URLEncoding.EncodeToString(encKey)
+	encKeyBase64 := base64.RawURLEncoding.EncodeToString(encKey)
 
 	// Read all data
 	data, err := io.ReadAll(req.Data)
@@ -140,13 +161,6 @@ func (s *Service) UploadMedia(ctx context.Context, req UploadRequest) (*UploadRe
 		return nil, err
 	}
 
-	// Calculate expiration time
-	var expiresAt *time.Time
-	if req.ExpiresIn != nil {
-		exp := time.Now().Add(*req.ExpiresIn)
-		expiresAt = &exp
-	}
-
 	// Hash password if provided (for access control)
 	var passwordHash *string
 	if req.Password != "" {
@@ -157,12 +171,42 @@ func (s *Service) UploadMedia(ctx context.Context, req UploadRequest) (*UploadRe
 		passwordHash = &hash
 	}
 
+	// Convert UniversalTime to *time.Time for database (nil if zero)
+	var expiresAt *time.Time
+	if !req.ExpiresAt.IsZero() {
+		expiresAt = &req.ExpiresAt.Time
+	}
+
+	// Extract filename and extension
+	var filename *string
+	var fileExtension *string
+	if req.Filename != "" {
+		// Extract extension from filename
+		extWithDot := filepath.Ext(req.Filename)
+		if extWithDot != "" {
+			// Remove leading dot from extension for storage
+			ext := strings.TrimPrefix(extWithDot, ".")
+			fileExtension = &ext
+			// Get base filename without extension
+			baseName := strings.TrimSuffix(req.Filename, extWithDot)
+			if baseName == "" {
+				baseName = req.Filename
+			}
+			filename = &baseName
+		} else {
+			// No extension, use full filename
+			filename = &req.Filename
+		}
+	}
+
 	// Store in database (salt is needed for decryption)
 	_, err = s.repo.CreateMediaResource(ctx, serviceToRepoCreateParams(CreateMediaResourceParams{
-		ResourceKey:  resourceKey,
-		PasswordHash: passwordHash,
-		ExpiresAt:    expiresAt,
-		Salt:         salt,
+		ResourceKey:   resourceKey,
+		PasswordHash:  passwordHash,
+		ExpiresAt:     expiresAt,
+		Salt:          salt,
+		Filename:      filename,
+		FileExtension: fileExtension,
 	}))
 	if err != nil {
 		// Cleanup S3 on error
@@ -184,7 +228,9 @@ type DownloadRequest struct {
 }
 
 type DownloadResponse struct {
-	Data io.ReadCloser
+	Data          io.ReadCloser
+	Filename      *string
+	FileExtension *string
 }
 
 func (s *Service) DownloadMedia(ctx context.Context, req DownloadRequest) (*DownloadResponse, error) {
@@ -202,7 +248,7 @@ func (s *Service) DownloadMedia(ctx context.Context, req DownloadRequest) (*Down
 	}
 
 	// Decode encryption key
-	encKey, err := base64.URLEncoding.DecodeString(encKeyBase64)
+	encKey, err := base64.RawURLEncoding.DecodeString(encKeyBase64)
 	if err != nil {
 		return nil, ErrInvalidEncryptionKey
 	}
@@ -213,6 +259,11 @@ func (s *Service) DownloadMedia(ctx context.Context, req DownloadRequest) (*Down
 		return nil, ErrNotFound
 	}
 	resource := repoToServiceMediaResource(repoResource)
+
+	// Check expiration
+	if !resource.ExpiresAt.IsZero() && resource.ExpiresAt.Time.Before(time.Now().UTC()) {
+		return nil, ErrExpired
+	}
 
 	// Check if already viewed
 	if resource.Viewed {
@@ -265,7 +316,9 @@ func (s *Service) DownloadMedia(ctx context.Context, req DownloadRequest) (*Down
 	_ = s.repo.DeleteMediaResource(ctx, resourceKey)
 
 	return &DownloadResponse{
-		Data: io.NopCloser(bytes.NewReader(decryptedData)),
+		Data:          io.NopCloser(bytes.NewReader(decryptedData)),
+		Filename:      resource.Filename,
+		FileExtension: resource.FileExtension,
 	}, nil
 }
 

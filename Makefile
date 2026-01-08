@@ -1,8 +1,14 @@
-.PHONY: migrate sqlc swag generate
+.PHONY: migrate migrate-down migrate-up sqlc swag generate
 
 # Run migrations
 migrate:
 	cd migrations/ && goose postgres "postgres://postgres:postgres@localhost:5432/lovebin" status
+
+migrate-up:
+	cd migrations/ && goose postgres "postgres://postgres:postgres@localhost:5432/lovebin" up
+
+migrate-down:
+	cd migrations/ && goose postgres "postgres://postgres:postgres@localhost:5432/lovebin" down
 
 # Generate sqlc code
 sqlc:
@@ -11,7 +17,7 @@ sqlc:
 
 # Generate swagger documentation
 swag:
-	swag init -g cmd/lovebin/main.go -o docs
+	swag init -g cmd/lovebin/main.go -o docs --parseDependency --parseInternal
 
 # Generate all code (sqlc + swagger)
 generate: sqlc swag

@@ -10,6 +10,7 @@ import (
 	accessrepo "lovebin/internal/services/access-service/repository"
 	"lovebin/modules/logger"
 	"lovebin/modules/postgres"
+	"lovebin/modules/timeparser"
 )
 
 // Convert repository types to service types
@@ -39,7 +40,7 @@ type ResourceAccess struct {
 	ID           string
 	ResourceKey  string
 	PasswordHash *string
-	ExpiresAt    *time.Time
+	ExpiresAt    timeparser.UniversalTime
 	Viewed       bool
 	Salt         []byte
 }
@@ -64,7 +65,7 @@ func (s *Service) VerifyAccess(ctx context.Context, resourceKey, password string
 	access := repoToServiceResourceAccess(repoAccess)
 
 	// Check expiration
-	if access.ExpiresAt != nil && access.ExpiresAt.Before(time.Now()) {
+	if !access.ExpiresAt.IsZero() && access.ExpiresAt.Time.Before(time.Now().UTC()) {
 		return ErrExpired
 	}
 
