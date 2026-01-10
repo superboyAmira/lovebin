@@ -18,4 +18,5 @@ type MediaResource struct {
 	Salt          []byte           `json:"salt"`
 	Filename      pgtype.Text      `json:"filename"`
 	FileExtension pgtype.Text      `json:"file_extension"`
+	BlurEnabled   pgtype.Bool      `json:"blur_enabled"`
 }

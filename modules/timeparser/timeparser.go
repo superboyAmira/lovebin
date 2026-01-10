@@ -89,6 +89,14 @@ func (ut UniversalTime) String() string {
 	return ut.Time.UTC().Format(time.RFC3339)
 }
 
+// Format форматирует время в указанном формате (для использования в шаблонах)
+func (ut UniversalTime) Format(layout string) string {
+	if ut.Time.IsZero() {
+		return ""
+	}
+	return ut.Time.UTC().Format(layout)
+}
+
 // IsZero проверяет, является ли время нулевым
 func (ut UniversalTime) IsZero() bool {
 	return ut.Time.IsZero()

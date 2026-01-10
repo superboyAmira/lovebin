@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 
 	"lovebin/internal/api"
@@ -43,6 +44,7 @@ type App struct {
 	accessService *accessservice.Service
 	handlers      *api.Handlers
 	server        *fiber.App
+	cron          *cron.Cron
 }
 
 func New(ctx context.Context, cfg Config) (*App, error) {
@@ -97,13 +99,35 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		MaxAge:           3600,
 	}))
 	server.Use(func(c *fiber.Ctx) error {
+		err := c.Next()
 		statusCode := c.Response().StatusCode()
 		log.Info("Request", zap.String("method", c.Method()), zap.String("path", c.Path()), zap.Int("status", statusCode))
-		return c.Next()
+		return err
 	})
 
 	// Setup routes
-	api.SetupRoutes(server, handlers)
+	api.SetupRoutes(server, handlers, log)
+
+	// Setup cron job for cleanup expired resources (daily at 00:15)
+	c := cron.New(cron.WithLocation(time.UTC))
+	_, err = c.AddFunc("15 0 * * *", func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+
+		log.Info("Starting cleanup of expired resources")
+		if err := mediaSvc.CleanupExpiredResources(cleanupCtx); err != nil {
+			log.Error("Failed to cleanup expired resources", zap.Error(err))
+		} else {
+			log.Info("Successfully completed cleanup of expired resources")
+		}
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to setup cron job: %w", err)
+	}
+
+	// Start cron scheduler
+	c.Start()
+	log.Info("Cron job scheduled for cleanup expired resources", zap.String("schedule", "15 0 * * *"))
 
 	return &App{
 		logger:        log,
@@ -114,6 +138,7 @@ func New(ctx context.Context, cfg Config) (*App, error) {
 		accessService: accessSvc,
 		handlers:      handlers,
 		server:        server,
+		cron:          c,
 	}, nil
 }
 
@@ -122,6 +147,12 @@ func (a *App) Start(addr string) error {
 }
 
 func (a *App) Shutdown(ctx context.Context) error {
+	// Stop cron scheduler
+	if a.cron != nil {
+		a.cron.Stop()
+		a.logger.Info("Cron scheduler stopped")
+	}
+
 	if err := a.server.Shutdown(); err != nil {
 		return err
 	}

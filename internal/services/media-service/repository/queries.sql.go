@@ -18,10 +18,11 @@ INSERT INTO media_resources (
     expires_at,
     salt,
     filename,
-    file_extension
+    file_extension,
+    blur_enabled
 ) VALUES (
-    $1, $2, $3, $4, $5, $6
-) RETURNING id, resource_key, password_hash, expires_at, viewed, created_at, salt, filename, file_extension
+    $1, $2, $3, $4, $5, $6, $7
+) RETURNING id, resource_key, password_hash, expires_at, viewed, created_at, salt, filename, file_extension, blur_enabled
 `
 
 type CreateMediaResourceParams struct {
@@ -31,6 +32,7 @@ type CreateMediaResourceParams struct {
 	Salt          []byte           `json:"salt"`
 	Filename      pgtype.Text      `json:"filename"`
 	FileExtension pgtype.Text      `json:"file_extension"`
+	BlurEnabled   pgtype.Bool      `json:"blur_enabled"`
 }
 
 func (q *Queries) CreateMediaResource(ctx context.Context, arg CreateMediaResourceParams) (MediaResource, error) {
@@ -41,6 +43,7 @@ func (q *Queries) CreateMediaResource(ctx context.Context, arg CreateMediaResour
 		arg.Salt,
 		arg.Filename,
 		arg.FileExtension,
+		arg.BlurEnabled,
 	)
 	var i MediaResource
 	err := row.Scan(
@@ -53,6 +56,7 @@ func (q *Queries) CreateMediaResource(ctx context.Context, arg CreateMediaResour
 		&i.Salt,
 		&i.Filename,
 		&i.FileExtension,
+		&i.BlurEnabled,
 	)
 	return i, err
 }
@@ -78,8 +82,35 @@ func (q *Queries) DeleteMediaResource(ctx context.Context, resourceKey string) e
 	return err
 }
 
+const getExpiredResources = `-- name: GetExpiredResources :many
+SELECT resource_key
+FROM media_resources
+WHERE expires_at IS NOT NULL
+AND expires_at <= NOW()
+`
+
+func (q *Queries) GetExpiredResources(ctx context.Context) ([]string, error) {
+	rows, err := q.db.Query(ctx, getExpiredResources)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var resource_key string
+		if err := rows.Scan(&resource_key); err != nil {
+			return nil, err
+		}
+		items = append(items, resource_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMediaResourceByKey = `-- name: GetMediaResourceByKey :one
-SELECT id, resource_key, password_hash, expires_at, viewed, created_at, salt, filename, file_extension
+SELECT id, resource_key, password_hash, expires_at, viewed, created_at, salt, filename, file_extension, blur_enabled
 FROM media_resources
 WHERE resource_key = $1
 AND (expires_at IS NULL OR expires_at > NOW())
@@ -99,12 +130,38 @@ func (q *Queries) GetMediaResourceByKey(ctx context.Context, resourceKey string)
 		&i.Salt,
 		&i.Filename,
 		&i.FileExtension,
+		&i.BlurEnabled,
+	)
+	return i, err
+}
+
+const getMediaResourceByKeyAny = `-- name: GetMediaResourceByKeyAny :one
+SELECT id, resource_key, password_hash, expires_at, viewed, created_at, salt, filename, file_extension, blur_enabled
+FROM media_resources
+WHERE resource_key = $1
+AND (expires_at IS NULL OR expires_at > NOW())
+`
+
+func (q *Queries) GetMediaResourceByKeyAny(ctx context.Context, resourceKey string) (MediaResource, error) {
+	row := q.db.QueryRow(ctx, getMediaResourceByKeyAny, resourceKey)
+	var i MediaResource
+	err := row.Scan(
+		&i.ID,
+		&i.ResourceKey,
+		&i.PasswordHash,
+		&i.ExpiresAt,
+		&i.Viewed,
+		&i.CreatedAt,
+		&i.Salt,
+		&i.Filename,
+		&i.FileExtension,
+		&i.BlurEnabled,
 	)
 	return i, err
 }
 
 const getMediaResourceForView = `-- name: GetMediaResourceForView :one
-SELECT id, resource_key, password_hash, expires_at, viewed, created_at, salt, filename, file_extension
+SELECT id, resource_key, password_hash, expires_at, viewed, created_at, salt, filename, file_extension, blur_enabled
 FROM media_resources
 WHERE resource_key = $1
 AND (expires_at IS NULL OR expires_at > NOW())
@@ -124,6 +181,7 @@ func (q *Queries) GetMediaResourceForView(ctx context.Context, resourceKey strin
 		&i.Salt,
 		&i.Filename,
 		&i.FileExtension,
+		&i.BlurEnabled,
 	)
 	return i, err
 }

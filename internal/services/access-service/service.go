@@ -57,6 +57,27 @@ func NewService(
 	}
 }
 
+// CheckResourceAccess checks resource access without verifying password
+func (s *Service) CheckResourceAccess(ctx context.Context, resourceKey string) (ResourceAccess, error) {
+	repoAccess, err := s.repo.CheckResourceAccess(ctx, resourceKey)
+	if err != nil {
+		return ResourceAccess{}, ErrNotFound
+	}
+	access := repoToServiceResourceAccess(repoAccess)
+
+	// Check expiration
+	if !access.ExpiresAt.IsZero() && access.ExpiresAt.Time.Before(time.Now().UTC()) {
+		return ResourceAccess{}, ErrExpired
+	}
+
+	// Check if already viewed
+	if access.Viewed {
+		return ResourceAccess{}, ErrAlreadyViewed
+	}
+
+	return access, nil
+}
+
 func (s *Service) VerifyAccess(ctx context.Context, resourceKey, password string) error {
 	repoAccess, err := s.repo.CheckResourceAccess(ctx, resourceKey)
 	if err != nil {
@@ -85,14 +106,6 @@ func (s *Service) VerifyAccess(ctx context.Context, resourceKey, password string
 	}
 
 	return nil
-}
-
-func (s *Service) HashPassword(password string) (string, error) {
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		return "", err
-	}
-	return string(hash), nil
 }
 
 var (

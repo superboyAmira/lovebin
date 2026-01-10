@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoveBin - Просмотр файла</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Extract encryption key from fragment BEFORE page loads to prevent 400 error -->
+    <script>
+        (function() {
+            // Extract encryption key from URL fragment immediately
+            const hash = window.location.hash;
+            let encKey = '';
+            if (hash && hash.length > 1) {
+                encKey = hash.substring(1);
+            }
+            
+            // Store for later use
+            window.__encKeyFromFragment = encKey;
+            
+            // Function to add enc_key to URL
+            window.__addEncKeyToURL = function(url) {
+                if (!window.__encKeyFromFragment) return url;
+                try {
+                    const urlObj = new URL(url, window.location.origin);
+                    if (!urlObj.searchParams.has('enc_key')) {
+                        urlObj.searchParams.set('enc_key', window.__encKeyFromFragment);
+                    }
+                    return urlObj.pathname + urlObj.search;
+                } catch (e) {
+                    const separator = url.includes('?') ? '&' : '?';
+                    return url + separator + 'enc_key=' + encodeURIComponent(window.__encKeyFromFragment);
+                }
+            };
+        })();
+    </script>
+    
+    <style>
+        :root {
+            --pink-50: #fdf2f8;
+            --pink-100: #fce7f3;
+            --pink-200: #fbcfe8;
+            --pink-300: #f9a8d4;
+            --pink-400: #f472b6;
+            --pink-500: #ec4899;
+            --pink-600: #db2777;
+            --pink-700: #be185d;
+            --pink-800: #9f1239;
+            --pink-900: #831843;
+        }
+        
+        body {
+            background: linear-gradient(135deg, var(--pink-50) 0%, var(--pink-100) 100%);
+            min-height: 100vh;
+        }
+        
+        .pink-button {
+            background: linear-gradient(135deg, var(--pink-500) 0%, var(--pink-600) 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .pink-button:hover {
+            background: linear-gradient(135deg, var(--pink-600) 0%, var(--pink-700) 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(236, 72, 153, 0.3);
+        }
+        
+        .preview-container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .preview-image {
+            max-width: 100%;
+            max-height: 70vh;
+            object-fit: contain;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+        
+        .preview-image.blurred {
+            filter: blur(15px);
+        }
+        
+        .modal-backdrop {
+            backdrop-filter: blur(4px);
+        }
+        
+        .content-blur {
+            filter: blur(5px);
+            pointer-events: none;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+<body class="font-sans" {{if .ShowPasswordModal}}data-show-password-modal{{end}} {{if .BlurEnabled}}data-blur-enabled{{end}}>
+    <div class="container mx-auto px-4 py-8 max-w-4xl" data-resource-key="{{.ResourceKey}}">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="flex justify-center mb-4">
+                <img src="/static/logo.jpg" alt="LoveBin Logo" class="w-16 h-16 rounded-full object-cover shadow-lg" onerror="this.style.display='none'">
+            </div>
+            <h1 class="text-4xl font-bold text-pink-600 mb-2">LoveBin</h1>
+            <p class="text-pink-500">Просмотр файла</p>
+        </div>
+
+        <!-- File Info Card -->
+        <div class="bg-white rounded-2xl shadow-xl p-8 mb-6 {{if .ShowPasswordModal}}content-blur{{end}}">
+            <div class="text-center">
+                <!-- File Icon or Preview -->
+                {{if .IsImage}}
+                <div class="mb-6 preview-container">
+                    {{if .PreviewURL}}
+                    <img 
+                        id="previewImage" 
+                        data-src="{{.PreviewURL}}"
+                        alt="{{.Filename}}" 
+                        class="preview-image mx-auto {{if .BlurEnabled}}blurred{{end}}"
+                        crossorigin="anonymous"
+                        onerror="handleImageError()"
+                    >
+                    <script>
+                        // Set src immediately with enc_key from fragment to prevent 400 error
+                        (function() {
+                            const img = document.getElementById('previewImage');
+                            if (img && window.__addEncKeyToURL) {
+                                const dataSrc = img.getAttribute('data-src');
+                                if (dataSrc) {
+                                    img.src = window.__addEncKeyToURL(dataSrc);
+                                }
+                            }
+                        })();
+                    </script>
+                    {{end}}
+                    <div id="fileIcon" class="mx-auto w-32 h-32 text-pink-400 mb-4" {{if .PreviewURL}}style="display: none;"{{end}}>
+                        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-full h-full">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                    </div>
+                </div>
+                {{else}}
+                <div class="mx-auto w-32 h-32 text-pink-400 mb-4">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" class="w-full h-full">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"></path>
+                    </svg>
+                </div>
+                {{end}}
+
+                <!-- Filename -->
+                <h2 class="text-2xl font-semibold text-gray-800 mb-6 break-all">{{.Filename}}</h2>
+
+                <!-- Download Button (hidden if password modal is shown) -->
+                {{if not .ShowPasswordModal}}
+                <a 
+                    href="{{.DownloadURL}}" 
+                    id="downloadBtn"
+                    class="inline-block pink-button text-white font-semibold py-4 px-8 rounded-lg shadow-lg text-lg"
+                    download="{{.Filename}}"
+                >
+                    <span class="flex items-center justify-center">
+                        <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path>
+                        </svg>
+                        Скачать файл
+                    </span>
+                </a>
+                {{end}}
+
+                <!-- Warning -->
+                <div class="mt-6 bg-pink-50 border border-pink-200 rounded-lg p-4">
+                    <p class="text-sm text-pink-700">
+                        <strong>Важно:</strong> Файл будет удален после скачивания. Это одноразовая ссылка.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Password Modal -->
+    {{if .ShowPasswordModal}}
+    <div id="passwordModal" class="fixed inset-0 bg-black bg-opacity-50 modal-backdrop flex items-center justify-center z-50" style="display: flex;">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full mx-4 transform transition-all">
+            <div class="text-center mb-6">
+                <div class="mx-auto w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mb-4">
+                    <svg class="w-8 h-8 text-pink-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                    </svg>
+                </div>
+                <h3 class="text-2xl font-bold text-pink-600 mb-2">Требуется пароль</h3>
+                <p class="text-gray-600">Для доступа к файлу введите пароль</p>
+            </div>
+            
+            {{if .PasswordError}}
+            <div class="mb-4 bg-red-50 border border-red-200 rounded-lg p-3">
+                <p class="text-sm text-red-700 flex items-center">
+                    <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"></path>
+                    </svg>
+                    {{.PasswordError}}
+                </p>
+            </div>
+            {{end}}
+            
+            <form id="passwordForm" onsubmit="handlePasswordSubmit(event)">
+                <input type="hidden" name="resourceKey" value="{{.ResourceKey}}">
+                <div class="mb-6">
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+                        Пароль
+                    </label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        name="password" 
+                        required
+                        autofocus
+                        class="w-full px-4 py-3 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition"
+                        placeholder="Введите пароль"
+                    >
+                </div>
+                <div class="flex gap-4">
+                    <button 
+                        type="submit"
+                        class="flex-1 pink-button text-white font-semibold py-3 px-6 rounded-lg shadow-lg"
+                    >
+                        Открыть
+                    </button>
+                    <button 
+                        type="button"
+                        onclick="closePasswordModal()"
+                        class="flex-1 bg-gray-200 text-gray-700 font-semibold py-3 px-6 rounded-lg hover:bg-gray-300 transition"
+                    >
+                        Отмена
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    {{end}}
+
+    <script>
+        // Get values from data attributes to avoid template syntax issues
+        const resourceKeyElement = document.querySelector('[data-resource-key]');
+        const resourceKey = resourceKeyElement ? resourceKeyElement.getAttribute('data-resource-key') : '';
+        const showPasswordModal = document.body.hasAttribute('data-show-password-modal');
+        const blurEnabled = document.body.hasAttribute('data-blur-enabled');
+        
+        // Use encryption key extracted in head script
+        const encKeyFromFragment = window.__encKeyFromFragment || '';
+        const addEncKeyToURL = window.__addEncKeyToURL || function(url) { return url; };
+        
+        function handlePasswordSubmit(event) {
+            event.preventDefault();
+            const form = event.target;
+            const password = form.querySelector('#password').value;
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('password', password);
+            // Preserve fragment
+            if (window.location.hash) {
+                currentUrl.hash = window.location.hash;
+            }
+            window.location.href = currentUrl.toString();
+        }
+        
+        function closePasswordModal() {
+            window.location.href = '/';
+        }
+        
+        // Show modal on page load if needed
+        if (showPasswordModal) {
+            document.getElementById('passwordModal').style.display = 'flex';
+        }
+        
+        function handleImageError() {
+            const previewImage = document.getElementById('previewImage');
+            const fileIcon = document.getElementById('fileIcon');
+            const fileIconFallback = document.getElementById('fileIconFallback');
+            if (previewImage) {
+                previewImage.style.display = 'none';
+            }
+            if (fileIcon) {
+                fileIcon.style.display = 'block';
+            }
+            if (fileIconFallback) {
+                fileIconFallback.style.display = 'block';
+            }
+        }
+
+        // Update preview image URL with encryption key (before setting src to avoid 400 error)
+        // This runs immediately when script loads, before browser tries to load image
+        const previewImage = document.getElementById('previewImage');
+        if (previewImage && encKeyFromFragment) {
+            const dataSrc = previewImage.getAttribute('data-src');
+            if (dataSrc) {
+                // Add enc_key from fragment before setting src (prevents 400 error)
+                const finalSrc = addEncKeyToURL(dataSrc);
+                previewImage.src = finalSrc;
+            }
+            previewImage.addEventListener('error', handleImageError);
+        } else if (previewImage) {
+            // If no encKey in fragment, try to load with data-src (may fail, but that's expected)
+            const dataSrc = previewImage.getAttribute('data-src');
+            if (dataSrc) {
+                previewImage.src = dataSrc;
+            }
+            previewImage.addEventListener('error', handleImageError);
+        }
+
+        // Update download button URL with encryption key
+        const downloadBtn = document.getElementById('downloadBtn');
+        if (downloadBtn) {
+            const originalHref = downloadBtn.href;
+            downloadBtn.href = addEncKeyToURL(originalHref);
+            
+            // Handle download click
+            downloadBtn.addEventListener('click', function(e) {
+                // The download will happen automatically via the link
+                // Server will mark as viewed and delete after download
+            });
+        }
+    </script>
+</body>
+</html>

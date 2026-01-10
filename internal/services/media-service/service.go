@@ -7,17 +7,21 @@ import (
 	"errors"
 	"io"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
 
+	"fmt"
 	mediarepo "lovebin/internal/services/media-service/repository"
 	"lovebin/modules/encryption"
 	"lovebin/modules/logger"
 	"lovebin/modules/postgres"
 	"lovebin/modules/s3"
 	"lovebin/modules/timeparser"
+
+	"go.uber.org/zap"
 )
 
 // Convert repository types to service types
@@ -30,6 +34,7 @@ func repoToServiceMediaResource(repo mediarepo.MediaResourceResult) MediaResourc
 		Salt:          repo.Salt,
 		Filename:      repo.Filename,
 		FileExtension: repo.FileExtension,
+		BlurEnabled:   repo.BlurEnabled,
 	}
 
 	// Convert ExpiresAt
@@ -53,6 +58,7 @@ func serviceToRepoCreateParams(arg CreateMediaResourceParams) mediarepo.CreateMe
 		Salt:          arg.Salt,
 		Filename:      arg.Filename,
 		FileExtension: arg.FileExtension,
+		BlurEnabled:   arg.BlurEnabled,
 	}
 }
 
@@ -67,9 +73,12 @@ type Service struct {
 type Repository interface {
 	CreateMediaResource(ctx context.Context, arg mediarepo.CreateMediaResourceInput) (mediarepo.MediaResourceResult, error)
 	GetMediaResourceByKey(ctx context.Context, resourceKey string) (mediarepo.MediaResourceResult, error)
+	GetMediaResourceByKeyAny(ctx context.Context, resourceKey string) (mediarepo.MediaResourceResult, error)
 	MarkAsViewed(ctx context.Context, resourceKey string) error
 	DeleteMediaResource(ctx context.Context, resourceKey string) error
 	GetMediaResourceForView(ctx context.Context, resourceKey string) (mediarepo.MediaResourceResult, error)
+	GetExpiredResources(ctx context.Context) ([]string, error)
+	DeleteExpiredResources(ctx context.Context) error
 }
 
 type CreateMediaResourceParams struct {
@@ -79,6 +88,7 @@ type CreateMediaResourceParams struct {
 	Salt          []byte
 	Filename      *string
 	FileExtension *string
+	BlurEnabled   bool
 }
 
 type MediaResource struct {
@@ -91,6 +101,7 @@ type MediaResource struct {
 	Salt          []byte
 	Filename      *string
 	FileExtension *string
+	BlurEnabled   bool
 }
 
 func NewService(
@@ -110,10 +121,11 @@ func NewService(
 }
 
 type UploadRequest struct {
-	Data      io.Reader
-	Password  string
-	ExpiresAt timeparser.UniversalTime // zero time means never expires
-	Filename  string                   // original filename
+	Data        io.Reader
+	Password    string
+	ExpiresAt   timeparser.UniversalTime // zero time means never expires
+	Filename    string                   // original filename
+	BlurEnabled bool                     // enable blur effect on preview
 }
 
 type UploadResponse struct {
@@ -207,6 +219,7 @@ func (s *Service) UploadMedia(ctx context.Context, req UploadRequest) (*UploadRe
 		Salt:          salt,
 		Filename:      filename,
 		FileExtension: fileExtension,
+		BlurEnabled:   req.BlurEnabled,
 	}))
 	if err != nil {
 		// Cleanup S3 on error
@@ -223,38 +236,56 @@ func (s *Service) UploadMedia(ctx context.Context, req UploadRequest) (*UploadRe
 }
 
 type DownloadRequest struct {
-	ResourceKey string
-	Password    string
+	ResourceKey  string
+	Password     string
+	EncKeyBase64 string
 }
 
-type DownloadResponse struct {
-	Data          io.ReadCloser
+type MediaInfo struct {
 	Filename      *string
 	FileExtension *string
+	IsImage       bool
+	BlurEnabled   bool
 }
 
-func (s *Service) DownloadMedia(ctx context.Context, req DownloadRequest) (*DownloadResponse, error) {
-	// Parse resource key and encryption key from URL
-	// Format: resourceKey#encKey or just resourceKey
-	parts := strings.Split(req.ResourceKey, "#")
-	resourceKey := parts[0]
-	var encKeyBase64 string
-	if len(parts) > 1 {
-		encKeyBase64 = parts[1]
+// GetMediaInfo gets media file information without downloading
+func (s *Service) GetMediaInfo(ctx context.Context, resourceKey string) (*MediaInfo, error) {
+	// Get resource from database (any, including viewed)
+	repoResource, err := s.repo.GetMediaResourceByKeyAny(ctx, resourceKey)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	resource := repoToServiceMediaResource(repoResource)
+
+	// Check if it's an image
+	isImage := false
+	if resource.FileExtension != nil {
+		ext := strings.ToLower(*resource.FileExtension)
+		isImage = slices.Contains([]string{"jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "ico"}, ext)
 	}
 
-	if encKeyBase64 == "" {
+	return &MediaInfo{
+		Filename:      resource.Filename,
+		FileExtension: resource.FileExtension,
+		IsImage:       isImage,
+		BlurEnabled:   resource.BlurEnabled,
+	}, nil
+}
+
+// GetMediaPreview gets media file for preview (doesn't mark as viewed or delete)
+func (s *Service) GetMediaPreview(ctx context.Context, req *DownloadRequest) (*DownloadResponse, error) {
+	if req.EncKeyBase64 == "" {
 		return nil, ErrMissingEncryptionKey
 	}
 
 	// Decode encryption key
-	encKey, err := base64.RawURLEncoding.DecodeString(encKeyBase64)
+	encKey, err := base64.RawURLEncoding.DecodeString(req.EncKeyBase64)
 	if err != nil {
 		return nil, ErrInvalidEncryptionKey
 	}
 
-	// Get resource from database with lock
-	repoResource, err := s.repo.GetMediaResourceForView(ctx, resourceKey)
+	// Get resource from database (without lock, don't mark as viewed)
+	repoResource, err := s.repo.GetMediaResourceByKey(ctx, req.ResourceKey)
 	if err != nil {
 		return nil, ErrNotFound
 	}
@@ -278,20 +309,90 @@ func (s *Service) DownloadMedia(ctx context.Context, req DownloadRequest) (*Down
 	}
 
 	// Download from S3
-	s3Key := "media/" + resourceKey
+	s3Key := "media/" + req.ResourceKey
 	data, err := s.s3.Download(ctx, "", s3Key)
 	if err != nil {
 		return nil, ErrNotFound
 	}
 
-	// Mark as viewed (this will trigger deletion)
-	err = s.repo.MarkAsViewed(ctx, resourceKey)
+	// Decrypt data
+	encryptedData, err := io.ReadAll(data)
 	if err != nil {
-		data.Close()
 		return nil, err
 	}
+	err = data.Close()
+	if err != nil {
+		return nil, fmt.Errorf("failed to close data: %w", err)
+	}
 
-	// Decrypt data
+	// Reconstruct encryption password
+	encryptionPassword := string(encKey)
+	if req.Password != "" {
+		encryptionPassword = req.Password + string(encKey)
+	}
+
+	decryptedData, err := s.encryption.Decrypt(encryptedData, resource.Salt, encryptionPassword)
+	if err != nil {
+		return nil, ErrDecryptionFailed
+	}
+
+	// Return preview (don't delete or mark as viewed)
+	return &DownloadResponse{
+		Data:          io.NopCloser(bytes.NewReader(decryptedData)),
+		Filename:      resource.Filename,
+		FileExtension: resource.FileExtension,
+	}, nil
+}
+
+type DownloadResponse struct {
+	Data          io.ReadCloser
+	Filename      *string
+	FileExtension *string
+}
+
+func (s *Service) DownloadMedia(ctx context.Context, req *DownloadRequest) (*DownloadResponse, error) {
+	if req.EncKeyBase64 == "" {
+		return nil, ErrMissingEncryptionKey
+	}
+
+	// Decode encryption key
+	encKey, err := base64.RawURLEncoding.DecodeString(req.EncKeyBase64)
+	if err != nil {
+		return nil, ErrInvalidEncryptionKey
+	}
+
+	// Get resource from database with lock
+	repoResource, err := s.repo.GetMediaResourceForView(ctx, req.ResourceKey)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+	resource := repoToServiceMediaResource(repoResource)
+
+	// Check expiration
+	if !resource.ExpiresAt.IsZero() && resource.ExpiresAt.Time.Before(time.Now().UTC()) {
+		return nil, ErrExpired
+	}
+
+	// Check if already viewed
+	if resource.Viewed {
+		return nil, ErrAlreadyViewed
+	}
+
+	// Verify password if required
+	if resource.PasswordHash != nil {
+		if !verifyPassword(req.Password, *resource.PasswordHash) {
+			return nil, ErrInvalidPassword
+		}
+	}
+
+	// Download from S3
+	s3Key := "media/" + req.ResourceKey
+	data, err := s.s3.Download(ctx, "", s3Key)
+	if err != nil {
+		return nil, ErrNotFound
+	}
+
+	// Decrypt data first
 	encryptedData, err := io.ReadAll(data)
 	data.Close()
 	if err != nil {
@@ -309,17 +410,48 @@ func (s *Service) DownloadMedia(ctx context.Context, req DownloadRequest) (*Down
 		return nil, ErrDecryptionFailed
 	}
 
-	// Delete from S3
-	_ = s.s3.Delete(ctx, "", s3Key)
-
-	// Delete from database
-	_ = s.repo.DeleteMediaResource(ctx, resourceKey)
+	// Mark as viewed (don't delete, just mark as viewed)
+	err = s.repo.MarkAsViewed(ctx, req.ResourceKey)
+	if err != nil {
+		// Log error but don't fail the download
+		s.logger.Warn("failed to mark resource as viewed", zap.Error(err), zap.String("resource_key", req.ResourceKey))
+	}
 
 	return &DownloadResponse{
 		Data:          io.NopCloser(bytes.NewReader(decryptedData)),
 		Filename:      resource.Filename,
 		FileExtension: resource.FileExtension,
 	}, nil
+}
+
+// CleanupExpiredResources removes expired resources from database and S3
+func (s *Service) CleanupExpiredResources(ctx context.Context) error {
+	// Get list of expired resource keys before deletion
+	expiredKeys, err := s.repo.GetExpiredResources(ctx)
+	if err != nil {
+		s.logger.Error("failed to get expired resources", zap.Error(err))
+		return err
+	}
+
+	// Delete from S3
+	for _, resourceKey := range expiredKeys {
+		s3Key := "media/" + resourceKey
+		if err := s.s3.Delete(ctx, "", s3Key); err != nil {
+			// Log error but continue with other deletions
+			s.logger.Warn("failed to delete expired resource from S3", zap.String("resource_key", resourceKey), zap.Error(err))
+		} else {
+			s.logger.Info("deleted expired resource from S3", zap.String("resource_key", resourceKey))
+		}
+	}
+
+	// Delete from database
+	if err := s.repo.DeleteExpiredResources(ctx); err != nil {
+		s.logger.Error("failed to delete expired resources from database", zap.Error(err))
+		return err
+	}
+
+	s.logger.Info("cleanup completed", zap.Int("deleted_count", len(expiredKeys)))
+	return nil
 }
 
 // Helper functions

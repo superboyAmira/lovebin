@@ -12,7 +12,9 @@ type Querier interface {
 	CreateMediaResource(ctx context.Context, arg CreateMediaResourceParams) (MediaResource, error)
 	DeleteExpiredResources(ctx context.Context) error
 	DeleteMediaResource(ctx context.Context, resourceKey string) error
+	GetExpiredResources(ctx context.Context) ([]string, error)
 	GetMediaResourceByKey(ctx context.Context, resourceKey string) (MediaResource, error)
+	GetMediaResourceByKeyAny(ctx context.Context, resourceKey string) (MediaResource, error)
 	GetMediaResourceForView(ctx context.Context, resourceKey string) (MediaResource, error)
 	MarkAsViewed(ctx context.Context, resourceKey string) error
 }

@@ -39,7 +39,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/media/{key}": {
+        "/media/{key}/download": {
             "get": {
                 "description": "Download a media file. The file will be deleted after first successful download. Requires encryption key in URL fragment.",
                 "consumes": [
@@ -189,10 +189,21 @@ const docTemplate = `{
         "internal_api.UploadResponse": {
             "type": "object",
             "properties": {
+                "expires_in": {
+                    "$ref": "#/definitions/lovebin_modules_timeparser.UniversalTime"
+                },
                 "resource_key": {
                     "type": "string"
                 },
                 "url": {
+                    "type": "string"
+                }
+            }
+        },
+        "lovebin_modules_timeparser.UniversalTime": {
+            "type": "object",
+            "properties": {
+                "time.Time": {
                     "type": "string"
                 }
             }

@@ -2,9 +2,16 @@ basePath: /
 definitions:
   internal_api.UploadResponse:
     properties:
+      expires_in:
+        $ref: '#/definitions/lovebin_modules_timeparser.UniversalTime'
       resource_key:
         type: string
       url:
+        type: string
+    type: object
+  lovebin_modules_timeparser.UniversalTime:
+    properties:
+      time.Time:
         type: string
     type: object
 host: localhost:8080
@@ -30,7 +37,7 @@ paths:
       summary: Health check
       tags:
       - health
-  /media/{key}:
+  /media/{key}/download:
     get:
       consumes:
       - application/json

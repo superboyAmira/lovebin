@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoveBin - Загрузка файлов</title>
+    
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js"></script>
+    
+    <!-- Tailwind CSS (для быстрой стилизации) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <style>
+        :root {
+            --pink-50: #fdf2f8;
+            --pink-100: #fce7f3;
+            --pink-200: #fbcfe8;
+            --pink-300: #f9a8d4;
+            --pink-400: #f472b6;
+            --pink-500: #ec4899;
+            --pink-600: #db2777;
+            --pink-700: #be185d;
+            --pink-800: #9f1239;
+            --pink-900: #831843;
+        }
+        
+        body {
+            background: linear-gradient(135deg, var(--pink-50) 0%, var(--pink-100) 100%);
+            min-height: 100vh;
+        }
+        
+        .pink-gradient {
+            background: linear-gradient(135deg, var(--pink-500) 0%, var(--pink-600) 100%);
+        }
+        
+        .pink-button {
+            background: linear-gradient(135deg, var(--pink-500) 0%, var(--pink-600) 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .pink-button:hover {
+            background: linear-gradient(135deg, var(--pink-600) 0%, var(--pink-700) 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(236, 72, 153, 0.3);
+        }
+        
+        .upload-area {
+            border: 3px dashed var(--pink-300);
+            transition: all 0.3s ease;
+        }
+        
+        .upload-area:hover {
+            border-color: var(--pink-500);
+            background: var(--pink-50);
+        }
+        
+        .upload-area.dragover {
+            border-color: var(--pink-600);
+            background: var(--pink-100);
+        }
+    </style>
+</head>
+<body class="font-sans">
+    <div class="container mx-auto px-4 py-8 max-w-4xl" x-data="uploadForm()">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="flex justify-center mb-4">
+                <img src="/static/logo.jpg" alt="LoveBin Logo" class="w-24 h-24 rounded-full object-cover shadow-lg" onerror="this.style.display='none'">
+            </div>
+            <h1 class="text-5xl font-bold text-pink-600 mb-2">LoveBin</h1>
+            <p class="text-pink-500 text-lg">Безопасная загрузка и обмен файлами</p>
+        </div>
+
+        <!-- Upload Form -->
+        <div class="bg-white rounded-2xl shadow-xl p-8 mb-6">
+            <form 
+                id="uploadForm"
+                hx-post="/upload"
+                hx-encoding="multipart/form-data"
+                hx-target="#result"
+                hx-swap="innerHTML"
+                hx-on::before-request="handleBeforeRequest(event)"
+                hx-on::after-request="handleUploadResponse(event)"
+                class="space-y-6"
+            >
+                <!-- File Upload Area -->
+                <div 
+                    class="upload-area rounded-xl p-12 text-center cursor-pointer"
+                    @click="$refs.fileInput.click()"
+                    @dragover.prevent="isDragging = true"
+                    @dragleave.prevent="isDragging = false"
+                    @drop.prevent="handleDrop($event)"
+                    :class="{'dragover': isDragging}"
+                >
+                    <input 
+                        type="file" 
+                        name="file" 
+                        id="fileInput"
+                        x-ref="fileInput"
+                        class="hidden"
+                        @change="handleFileSelect($event)"
+                        required
+                    >
+                    <div class="space-y-4">
+                        <svg class="mx-auto h-16 w-16 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path>
+                        </svg>
+                        <div>
+                            <p class="text-xl font-semibold text-pink-600 mb-2">
+                                <span x-show="!selectedFile">Перетащите файл сюда</span>
+                                <span x-show="selectedFile" x-text="selectedFile.name" class="text-pink-700"></span>
+                            </p>
+                            <p class="text-gray-500" x-show="!selectedFile">или нажмите для выбора</p>
+                            <p class="text-sm text-pink-500" x-show="selectedFile" x-text="formatFileSize(selectedFile.size)"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Password (Optional) -->
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+                        Пароль (необязательно)
+                    </label>
+                    <input 
+                        type="password" 
+                        name="password" 
+                        id="password"
+                        x-model="password"
+                        class="w-full px-4 py-3 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition"
+                        placeholder="Защитить файл паролем"
+                    >
+                </div>
+
+                <!-- Expiration Time (Optional) -->
+                <div>
+                    <label for="expires_in" class="block text-sm font-medium text-gray-700 mb-2">
+                        Время жизни (необязательно)
+                    </label>
+                    <select 
+                        name="expires_in_duration"
+                        id="expires_in"
+                        x-model="expiresIn"
+                        class="w-full px-4 py-3 border border-pink-200 rounded-lg focus:ring-2 focus:ring-pink-500 focus:border-transparent outline-none transition"
+                    >
+                        <option value="">Без ограничений</option>
+                        <option value="1h">1 час</option>
+                        <option value="24h">24 часа</option>
+                        <option value="7d">7 дней</option>
+                        <option value="30d">30 дней</option>
+                    </select>
+                    <!-- Hidden field for RFC3339 value -->
+                    <input type="hidden" name="expires_in" :value="expiresIn ? convertToRFC3339(expiresIn) : ''">
+                </div>
+
+                <!-- Blur Effect (Optional) -->
+                <div>
+                    <label class="flex items-center space-x-3 cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            name="blur_enabled" 
+                            value="true"
+                            class="w-5 h-5 text-pink-600 border-pink-300 rounded focus:ring-pink-500 focus:ring-2"
+                        >
+                        <span class="text-sm font-medium text-gray-700">
+                            Размыть превью изображения
+                        </span>
+                    </label>
+                </div>
+
+                <!-- Submit Button -->
+                <button 
+                    type="submit"
+                    class="w-full pink-button text-white font-semibold py-4 px-6 rounded-lg shadow-lg"
+                    :disabled="uploading"
+                >
+                    <span x-show="!uploading">Загрузить файл</span>
+                    <span x-show="uploading" class="flex items-center justify-center">
+                        <svg class="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Загрузка...
+                    </span>
+                </button>
+            </form>
+        </div>
+
+        <!-- Result Area -->
+        <div id="result"></div>
+
+        <!-- Instructions -->
+        <div class="bg-white rounded-2xl shadow-xl p-6">
+            <h2 class="text-2xl font-bold text-pink-600 mb-4">Как это работает?</h2>
+            <ul class="space-y-3 text-gray-700">
+                <li class="flex items-start">
+                    <span class="text-pink-500 mr-2">1.</span>
+                    <span>Загрузите файл через форму выше</span>
+                </li>
+                <li class="flex items-start">
+                    <span class="text-pink-500 mr-2">2.</span>
+                    <span>Получите уникальную ссылку для скачивания</span>
+                </li>
+                <li class="flex items-start">
+                    <span class="text-pink-500 mr-2">3.</span>
+                    <span>Файл будет удален после первого просмотра</span>
+                </li>
+                <li class="flex items-start">
+                    <span class="text-pink-500 mr-2">4.</span>
+                    <span>Все файлы зашифрованы и защищены</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        function uploadForm() {
+            return {
+                selectedFile: null,
+                password: '',
+                expiresIn: '',
+                uploading: false,
+                isDragging: false,
+                
+                handleFileSelect(event) {
+                    const file = event.target.files[0];
+                    if (file) {
+                        this.selectedFile = file;
+                    }
+                },
+                
+                handleDrop(event) {
+                    this.isDragging = false;
+                    const file = event.dataTransfer.files[0];
+                    if (file) {
+                        this.selectedFile = file;
+                        const input = document.getElementById('fileInput');
+                        const dataTransfer = new DataTransfer();
+                        dataTransfer.items.add(file);
+                        input.files = dataTransfer.files;
+                    }
+                },
+                
+                formatFileSize(bytes) {
+                    if (bytes === 0) return '0 Bytes';
+                    const k = 1024;
+                    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+                },
+                
+                handleUploadResponse(event) {
+                    this.uploading = false;
+                    if (event.detail.xhr.status === 200) {
+                        this.selectedFile = null;
+                        this.expiresIn = '';
+                        document.getElementById('uploadForm').reset();
+                    }
+                },
+                
+                // Convert duration to RFC3339 format
+                convertToRFC3339(duration) {
+                    if (!duration || duration === '') {
+                        return '';
+                    }
+                    
+                    const now = new Date();
+                    let futureDate = new Date(now);
+                    
+                    // Parse duration (e.g., "1h", "24h", "7d", "30d")
+                    const match = duration.match(/^(\d+)([hd])$/);
+                    if (!match) {
+                        return duration; // Return as-is if not in expected format
+                    }
+                    
+                    const value = parseInt(match[1]);
+                    const unit = match[2];
+                    
+                    if (unit === 'h') {
+                        futureDate.setHours(now.getHours() + value);
+                    } else if (unit === 'd') {
+                        futureDate.setDate(now.getDate() + value);
+                    }
+                    
+                    // Convert to RFC3339 format
+                    return futureDate.toISOString();
+                },
+                
+                // Handle before request - validate file
+                handleBeforeRequest(event) {
+                    const form = event.detail.elt;
+                    const fileInput = form.querySelector('input[type="file"]');
+                    if (!fileInput.files || !fileInput.files[0]) {
+                        event.preventDefault();
+                        alert('Пожалуйста, выберите файл для загрузки');
+                        return;
+                    }
+                    
+                    this.uploading = true;
+                }
+            }
+        }
+        
+        // Reset uploading state on error and restore select value
+        document.getElementById('uploadForm').addEventListener('htmx:response-error', function(event) {
+            const alpineData = Alpine.$data(document.querySelector('[x-data]'));
+            if (alpineData) {
+                alpineData.uploading = false;
+            }
+            // Restore original select value if it was changed
+            const expiresInSelect = document.querySelector('select[name="expires_in"]');
+            if (expiresInSelect && expiresInSelect.dataset.originalValue) {
+                expiresInSelect.value = expiresInSelect.dataset.originalValue;
+                delete expiresInSelect.dataset.originalValue;
+            }
+        });
+        
+        // Restore select value after successful request
+        document.getElementById('uploadForm').addEventListener('htmx:after-request', function(event) {
+            const expiresInSelect = document.querySelector('select[name="expires_in"]');
+            if (expiresInSelect && expiresInSelect.dataset.originalValue) {
+                expiresInSelect.value = expiresInSelect.dataset.originalValue;
+                delete expiresInSelect.dataset.originalValue;
+            }
+        });
+    </script>
+</body>
+</html>

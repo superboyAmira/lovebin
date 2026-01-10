@@ -22,6 +22,7 @@ type CreateMediaResourceInput struct {
 	Salt          []byte
 	Filename      *string
 	FileExtension *string
+	BlurEnabled   bool
 }
 
 // MediaResourceResult represents a media resource result
@@ -35,6 +36,7 @@ type MediaResourceResult struct {
 	Salt          []byte
 	Filename      *string
 	FileExtension *string
+	BlurEnabled   bool
 }
 
 func NewMediaRepository(db *pgxpool.Pool) *MediaRepository {
@@ -82,6 +84,12 @@ func (r *MediaRepository) CreateMediaResource(ctx context.Context, arg CreateMed
 		}
 	}
 
+	// Convert blur enabled
+	sqlcParams.BlurEnabled = pgtype.Bool{
+		Bool:  arg.BlurEnabled,
+		Valid: true,
+	}
+
 	dbResource, err := r.queries.CreateMediaResource(ctx, sqlcParams)
 	if err != nil {
 		return MediaResourceResult{}, err
@@ -92,6 +100,15 @@ func (r *MediaRepository) CreateMediaResource(ctx context.Context, arg CreateMed
 
 func (r *MediaRepository) GetMediaResourceByKey(ctx context.Context, resourceKey string) (MediaResourceResult, error) {
 	dbResource, err := r.queries.GetMediaResourceByKey(ctx, resourceKey)
+	if err != nil {
+		return MediaResourceResult{}, err
+	}
+
+	return toMediaResourceResult(dbResource), nil
+}
+
+func (r *MediaRepository) GetMediaResourceByKeyAny(ctx context.Context, resourceKey string) (MediaResourceResult, error) {
+	dbResource, err := r.queries.GetMediaResourceByKeyAny(ctx, resourceKey)
 	if err != nil {
 		return MediaResourceResult{}, err
 	}
@@ -114,6 +131,14 @@ func (r *MediaRepository) GetMediaResourceForView(ctx context.Context, resourceK
 	}
 
 	return toMediaResourceResult(dbResource), nil
+}
+
+func (r *MediaRepository) GetExpiredResources(ctx context.Context) ([]string, error) {
+	return r.queries.GetExpiredResources(ctx)
+}
+
+func (r *MediaRepository) DeleteExpiredResources(ctx context.Context) error {
+	return r.queries.DeleteExpiredResources(ctx)
 }
 
 func toMediaResourceResult(db MediaResource) MediaResourceResult {
@@ -156,6 +181,9 @@ func toMediaResourceResult(db MediaResource) MediaResourceResult {
 	if db.FileExtension.Valid {
 		result.FileExtension = &db.FileExtension.String
 	}
+
+	// Convert blur enabled (default to false if not valid, but should always be valid since column has DEFAULT FALSE)
+	result.BlurEnabled = db.BlurEnabled.Valid && db.BlurEnabled.Bool
 
 	return result
 }

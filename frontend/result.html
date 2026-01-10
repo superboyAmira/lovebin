@@ -1,0 +1,194 @@
+{{if .Success}}
+<div class="bg-green-50 border-2 border-green-200 rounded-xl p-6 mb-6">
+    <div class="flex items-start">
+        <svg class="h-6 w-6 text-green-500 mr-3 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        <div class="flex-1">
+            <h3 class="text-lg font-semibold text-green-800 mb-2">Файл успешно загружен!</h3>
+            <div class="space-y-3">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Ссылка для скачивания:</label>
+                    <div class="flex items-center space-x-2">
+                        <input 
+                            type="text" 
+                            id="downloadUrl" 
+                            value="{{.URL}}" 
+                            readonly
+                            class="flex-1 px-4 py-2 bg-white border border-pink-200 rounded-lg text-sm font-mono text-pink-700 focus:outline-none focus:ring-2 focus:ring-pink-500"
+                        >
+                        <button 
+                            onclick="copyToClipboard('downloadUrl')"
+                            class="px-4 py-2 pink-button text-white rounded-lg hover:shadow-lg transition"
+                        >
+                            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Срок действия:</label>
+                    {{if .ExpiresIn.IsZero}}
+                    <p class="text-sm text-gray-700">Без ограничений</p>
+                    {{else}}
+                    <p class="text-sm text-gray-700">
+                        <span id="expiresAt" data-utc-time="{{.ExpiresIn.Format "2006-01-02T15:04:05Z07:00"}}">Загрузка...</span>
+                    </p>
+                    <p class="text-sm text-gray-700">
+                        До удаления осталось: 
+                        <span id="timeRemaining" class="font-semibold text-pink-600" data-utc-time="{{.ExpiresIn.Format "2006-01-02T15:04:05Z07:00"}}">Загрузка...</span>
+                    </p>
+                    {{end}}
+                </div>
+                <div class="bg-pink-50 border border-pink-200 rounded-lg p-3">
+                    <p class="text-sm text-pink-700">
+                        <strong>Важно:</strong> Сохраните эту ссылку! Файл будет удален после первого просмотра и ссылка больше не будет работать.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{{else}}
+<div class="bg-red-50 border-2 border-red-200 rounded-xl p-6 mb-6">
+    <div class="flex items-start">
+        <svg class="h-6 w-6 text-red-500 mr-3 mt-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+        </svg>
+        <div class="flex-1">
+            <h3 class="text-lg font-semibold text-red-800 mb-2">Ошибка загрузки</h3>
+            <p class="text-red-700">{{.Error}}</p>
+        </div>
+    </div>
+</div>
+{{end}}
+
+<script>
+function copyToClipboard(inputId) {
+    const input = document.getElementById(inputId);
+    input.select();
+    input.setSelectionRange(0, 99999); // For mobile devices
+    document.execCommand('copy');
+    
+    // Show feedback
+    const button = event.target.closest('button');
+    const originalHTML = button.innerHTML;
+    button.innerHTML = '<svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>';
+    button.classList.add('bg-green-500');
+    
+    setTimeout(() => {
+        button.innerHTML = originalHTML;
+        button.classList.remove('bg-green-500');
+    }, 2000);
+}
+
+// Format time remaining as "дд чч мм сс"
+function formatTimeRemaining(expiresAt) {
+    const now = new Date();
+    const expires = new Date(expiresAt);
+    const diff = expires - now;
+    
+    if (diff <= 0) {
+        return '00 00 00 00';
+    }
+    
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    return `${String(days).padStart(2, '0')} ${String(hours).padStart(2, '0')} ${String(minutes).padStart(2, '0')} ${String(seconds).padStart(2, '0')}`;
+}
+
+// Format date in local timezone
+function formatLocalDateTime(utcDateString) {
+    const date = new Date(utcDateString);
+    if (isNaN(date.getTime())) {
+        return 'Ошибка формата даты';
+    }
+    
+    // Format as "YYYY-MM-DD HH:MM:SS" in local timezone
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    // Get timezone offset
+    const timezoneOffset = -date.getTimezoneOffset();
+    const offsetHours = Math.floor(Math.abs(timezoneOffset) / 60);
+    const offsetMinutes = Math.abs(timezoneOffset) % 60;
+    const offsetSign = timezoneOffset >= 0 ? '+' : '-';
+    const timezoneStr = `${offsetSign}${String(offsetHours).padStart(2, '0')}:${String(offsetMinutes).padStart(2, '0')}`;
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds} (UTC${timezoneStr})`;
+}
+
+// Function to initialize time display
+function initTimeDisplay() {
+    const expiresAtElement = document.getElementById('expiresAt');
+    const timeRemainingElement = document.getElementById('timeRemaining');
+
+    if (!expiresAtElement || !timeRemainingElement) {
+        return;
+    }
+
+    const utcTimeString = expiresAtElement.getAttribute('data-utc-time');
+    
+    if (!utcTimeString || utcTimeString === '') {
+        expiresAtElement.textContent = 'Время не указано';
+        timeRemainingElement.textContent = 'Время не указано';
+        return;
+    }
+    
+    // Parse UTC time
+    let expiresAt;
+    try {
+        expiresAt = new Date(utcTimeString);
+        if (isNaN(expiresAt.getTime())) {
+            throw new Error('Invalid date format');
+        }
+    } catch (e) {
+        console.error('Error parsing date:', e, 'UTC string:', utcTimeString);
+        expiresAtElement.textContent = 'Ошибка формата даты';
+        timeRemainingElement.textContent = 'Ошибка расчета времени';
+        return;
+    }
+    
+    // Format and display local time
+    expiresAtElement.textContent = formatLocalDateTime(utcTimeString);
+    
+    // Update time remaining immediately
+    timeRemainingElement.textContent = formatTimeRemaining(expiresAt);
+    
+    // Update every second
+    const intervalId = setInterval(() => {
+        const remaining = formatTimeRemaining(expiresAt);
+        timeRemainingElement.textContent = remaining;
+        
+        // If time expired, stop updating
+        if (remaining === '00 00 00 00') {
+            timeRemainingElement.textContent = 'Время истекло';
+            timeRemainingElement.classList.add('text-red-600');
+            clearInterval(intervalId);
+        }
+    }, 1000);
+}
+
+// Initialize when DOM is ready (for HTMX, this runs after content is swapped)
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initTimeDisplay);
+} else {
+    // DOM already loaded, run immediately
+    initTimeDisplay();
+}
+
+// Also initialize when HTMX swaps content
+document.body.addEventListener('htmx:afterSwap', function(event) {
+    if (event.detail.target.id === 'result') {
+        initTimeDisplay();
+    }
+});
+</script>
