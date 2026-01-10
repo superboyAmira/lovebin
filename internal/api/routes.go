@@ -18,7 +18,6 @@ var (
 	frontendDir string = findFrontendDir()
 )
 
-
 // findFrontendDir tries to find the frontend directory
 func findFrontendDir() string {
 	paths := []string{}
