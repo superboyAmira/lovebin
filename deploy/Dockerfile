@@ -39,6 +39,9 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /app/bin/lovebin .
 
+# Copy frontend directory
+COPY --from=builder /app/frontend ./frontend
+
 # Change ownership
 RUN chown -R appuser:appuser /app
 

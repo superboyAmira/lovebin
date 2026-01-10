@@ -40,7 +40,7 @@ sudo bash deploy/setup.sh
 
 1. Скопируйте `config/.env.example` в `config/.env`
 2. Обновите следующие значения:
-   - `DOCKER_IMAGE` - путь к вашему образу в GitHub Container Registry
+   - `DOCKER_IMAGE` - путь к вашему образу в Docker Hub (по умолчанию `aamira/lovebin`)
    - `POSTGRES_PASSWORD` - сильный пароль для PostgreSQL
    - `MINIO_ROOT_PASSWORD` - сильный пароль для MinIO
    - `S3_ACCESS_KEY_ID` и `S3_SECRET_ACCESS_KEY` - ключи для S3

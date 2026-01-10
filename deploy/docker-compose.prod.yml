@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.0'
 
 services:
   postgres:
@@ -10,6 +10,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -42,24 +44,22 @@ services:
     restart: unless-stopped
 
   app:
-    image: ${DOCKER_IMAGE}:${DOCKER_TAG:-latest}
+    image: ${DOCKER_IMAGE}:${DOCKER_TAG}
     container_name: lovebin-app-prod
     depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
+      - postgres
+      - minio
     env_file:
       - ../config/.env
     environment:
-      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_LEVEL: ${LOG_LEVEL}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE:-disable}
-      S3_REGION: ${S3_REGION:-us-east-1}
+      POSTGRES_SSLMODE: ${POSTGRES_SSLMODE}
+      S3_REGION: ${S3_REGION}
       S3_BUCKET: ${S3_BUCKET}
       S3_ENDPOINT: http://minio:9000
       S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
@@ -73,7 +73,6 @@ services:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
       interval: 30s
       timeout: 3s
-      start_period: 5s
       retries: 3
 
   nginx:

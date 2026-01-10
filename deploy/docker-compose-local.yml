@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.0'
 
 services:
   postgres:
@@ -47,10 +47,8 @@ services:
       dockerfile: deploy/Dockerfile
     container_name: lovebin-app
     depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
+      - postgres
+      - minio
     environment:
       LOG_LEVEL: ${LOG_LEVEL:-info}
       POSTGRES_HOST: postgres

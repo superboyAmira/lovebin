@@ -36,6 +36,9 @@ func findFrontendDir() string {
 		}
 	}
 
+	// Add common Docker/container paths
+	paths = append(paths, "/app/frontend", "./frontend", "frontend")
+
 	for _, path := range paths {
 		// Clean the path and check if it exists
 		cleanPath := filepath.Clean(path)
